@@ -1,5 +1,9 @@
 # -*- coding: utf-8 -*-
 
+# FOGLAMP_BEGIN
+# See: http://foglamp.readthedocs.io/
+# FOGLAMP_END
+
 """HTTP Listener handler for sensor phone application readings"""
 import sys
 from aiohttp import web
@@ -11,19 +15,19 @@ from datetime import datetime, timezone
 import uuid
 
 __author__ = "Mark Riddoch"
-__copyright__ = "Copyright (c) 2018 Dianomic Systems"
+__copyright__ = "Copyright (c) 2017 OSIsoft, LLC"
 __license__ = "Apache 2.0"
 __version__ = "${VERSION}"
 
 _LOGGER = logger.setup(__name__, level=20)
 
-_CONFIG_CATEGORY_NAME = 'SensorPhon'
+_CONFIG_CATEGORY_NAME = 'SensorApp'
 _CONFIG_CATEGORY_DESCRIPTION = 'South Plugin Sensor Phone app - based on SAP IOT Cloud platform'
 _DEFAULT_CONFIG = {
     'plugin': {
          'description': 'Sensor Phone',
          'type': 'string',
-         'default': 'sensor_phone'
+         'default': 'SensorPhone'
     },
     'port': {
         'description': 'Port to listen on',
@@ -39,7 +43,7 @@ _DEFAULT_CONFIG = {
 
 
 def plugin_info():
-    return {'name': 'sensor_phone', 'version': '1.0', 'mode': 'async', 'type': 'device',
+    return {'name': 'sensor_phone', 'version': '1.0', 'mode': 'async', 'type': 'south',
             'interface': '1.0', 'config': _DEFAULT_CONFIG}
 
 

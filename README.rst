@@ -11,7 +11,7 @@ Building
 In order to use this plugin
 
 	Install and run the FogLAMP main project
-	Set FOGLAMP_ROOT as specified in the FOGLamp Project
+	Set FOGLAMP_ROOT as specified in the FogLamp Project
 	Run make
 	Restart FogLAMP
 
