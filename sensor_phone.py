@@ -1,9 +1,5 @@
 # -*- coding: utf-8 -*-
 
-# FOGLAMP_BEGIN
-# See: http://foglamp.readthedocs.io/
-# FOGLAMP_END
-
 """HTTP Listener handler for sensor phone application readings"""
 import sys
 from aiohttp import web
@@ -15,7 +11,7 @@ from datetime import datetime, timezone
 import uuid
 
 __author__ = "Mark Riddoch"
-__copyright__ = "Copyright (c) 2017 OSIsoft, LLC"
+__copyright__ = "Copyright (c) 2018 Dianomic Systems"
 __license__ = "Apache 2.0"
 __version__ = "${VERSION}"
 
