@@ -55,7 +55,7 @@ def plugin_init(config):
     host = config['host']['value']
     port = config['port']['value']
 
-    return {'host': host, 'port': port}
+    return {'host': host, 'port': port, 'plugin': {'value' : 'SensorPhone'} }
 
 
 def plugin_start(data):
