@@ -5,45 +5,49 @@
 # FOGLAMP_END
 
 """HTTP Listener handler for sensor phone application readings"""
-import sys
-from aiohttp import web
 import asyncio
+import uuid
+import logging
+from aiohttp import web
+
 from foglamp.common import logger
 from foglamp.common.web import middleware
 from foglamp.services.south.ingest import Ingest
-from datetime import datetime, timezone
-import uuid
+from foglamp.plugins.common import utils
 
-__author__ = "Mark Riddoch"
+__author__ = "Mark Riddoch, Ashish Jabble"
 __copyright__ = "Copyright (c) 2017 OSIsoft, LLC"
 __license__ = "Apache 2.0"
 __version__ = "${VERSION}"
 
-_LOGGER = logger.setup(__name__, level=20)
+_LOGGER = logger.setup(__name__, level=logging.INFO)
 
 _CONFIG_CATEGORY_NAME = 'SensorApp'
 _CONFIG_CATEGORY_DESCRIPTION = 'South Plugin Sensor Phone app - based on SAP IOT Cloud platform'
 _DEFAULT_CONFIG = {
     'plugin': {
-         'description': 'Sensor Phone',
+         'description': 'SensorPhone application on a iPhone',
          'type': 'string',
-         'default': 'SensorPhone'
-    },
-    'port': {
-        'description': 'Port to listen on',
-        'type': 'integer',
-        'default': '8080',
+         'default': 'sensorphone',
+         'readonly': 'true'
     },
     'host': {
         'description': 'Address to accept data on',
         'type': 'string',
         'default': '0.0.0.0',
+        'order': '1'
+    },
+    'port': {
+        'description': 'Port to listen on',
+        'type': 'integer',
+        'default': '8080',
+        'order': '2'
     }
 }
 
 
 def plugin_info():
-    return {'name': 'sensor_phone', 'version': '1.0', 'mode': 'async', 'type': 'south',
+    return {'name': 'sensorphone', 'version': '1.0', 'mode': 'async', 'type': 'south',
             'interface': '1.0', 'config': _DEFAULT_CONFIG}
 
 
@@ -55,7 +59,7 @@ def plugin_init(config):
     host = config['host']['value']
     port = config['port']['value']
 
-    return {'host': host, 'port': port, 'plugin': {'value' : 'SensorPhone'} }
+    return {'host': host, 'port': port, 'plugin': {'value': 'sensorphone'}}
 
 
 def plugin_start(data):
@@ -64,42 +68,48 @@ def plugin_start(data):
         port = data['port']
 
         loop = asyncio.get_event_loop()
-
         app = web.Application(middlewares=[middleware.error_middleware])
         app.router.add_route('POST', '/', SensorPhoneIngest.render_post)
-        handler = app.make_handler()
-        coro = loop.create_server(handler, host, port)
-        server = asyncio.ensure_future(coro)
+        handler = app._make_handler()
+        server_coro = loop.create_server(handler, host, port)
+        future = asyncio.ensure_future(server_coro)
 
         data['app'] = app
         data['handler'] = handler
-        data['server'] = server
+        data['server'] = None
+
+        def f_callback(f):
+            data['server'] = f.result()
+
+        future.add_done_callback(f_callback)
     except Exception as e:
         _LOGGER.exception(str(e))
-        sys.exit(1)
 
 
 def plugin_reconfigure(config):
     pass
 
 
-def plugin_shutdown(data):
+def plugin_shutdown(handle):
+    _LOGGER.info('Sensor Phone plugin shut down.')
     try:
-        app = data['app']
-        handler = data['handler']
-        server = data['server']
+        app = handle['app']
+        handler = handle['handler']
+        server = handle['server']
 
-        server.close()
-        asyncio.ensure_future(server.wait_closed())
-        asyncio.ensure_future(app.shutdown())
-        asyncio.ensure_future(handler.shutdown(60.0))
-        asyncio.ensure_future(app.cleanup())
+        if server:
+            server.close()
+            asyncio.ensure_future(server.wait_closed())
+            asyncio.ensure_future(app.shutdown())
+            asyncio.ensure_future(handler.shutdown(60.0))
+            asyncio.ensure_future(app.cleanup())
     except Exception as e:
         _LOGGER.exception(str(e))
         raise
 
-
 # TODO: Implement FOGL-701 (implement AuditLogger which logs to DB and can be used by all ) for this class
+
+
 class SensorPhoneIngest(object):
     """Handles incoming sensor readings from Sensor Phone application"""
 
@@ -147,7 +157,7 @@ class SensorPhoneIngest(object):
                 payload = await request.json()
 
                 asset = 'SensorPhone'
-                timestamp = str(datetime.now(tz=timezone.utc))
+                timestamp = utils.local_timestamp()
                 messages = payload.get('messages')
 
                 if not isinstance(messages, list):
