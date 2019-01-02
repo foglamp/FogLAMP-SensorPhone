@@ -35,13 +35,15 @@ _DEFAULT_CONFIG = {
         'description': 'Address to accept data on',
         'type': 'string',
         'default': '0.0.0.0',
-        'order': '1'
+        'order': '1',
+        'displayName': 'Host'
     },
     'port': {
         'description': 'Port to listen on',
         'type': 'integer',
         'default': '8080',
-        'order': '2'
+        'order': '2',
+        'displayName': 'Port'
     }
 }
 
