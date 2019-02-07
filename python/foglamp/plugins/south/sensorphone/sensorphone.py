@@ -49,7 +49,7 @@ _DEFAULT_CONFIG = {
 
 
 def plugin_info():
-    return {'name': 'sensorphone', 'version': '1.0', 'mode': 'async', 'type': 'south',
+    return {'name': 'sensorphone', 'version': '1.5.0',
             'interface': '1.0', 'config': _DEFAULT_CONFIG}
 
 
