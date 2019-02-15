@@ -8,12 +8,14 @@
 import asyncio
 import uuid
 import logging
+from threading import Thread
 from aiohttp import web
 
 from foglamp.common import logger
 from foglamp.common.web import middleware
-from foglamp.services.south.ingest import Ingest
 from foglamp.plugins.common import utils
+import async_ingest
+
 
 __author__ = "Mark Riddoch, Ashish Jabble"
 __copyright__ = "Copyright (c) 2017 OSIsoft, LLC"
@@ -21,6 +23,10 @@ __license__ = "Apache 2.0"
 __version__ = "${VERSION}"
 
 _LOGGER = logger.setup(__name__, level=logging.INFO)
+c_callback = None
+c_ingest_ref = None
+loop = None
+t = None
 
 _CONFIG_CATEGORY_NAME = 'SensorApp'
 _CONFIG_CATEGORY_DESCRIPTION = 'South Plugin Sensor Phone app - based on SAP IOT Cloud platform'
@@ -49,8 +55,14 @@ _DEFAULT_CONFIG = {
 
 
 def plugin_info():
-    return {'name': 'sensorphone', 'version': '1.5.0',
-            'interface': '1.0', 'config': _DEFAULT_CONFIG}
+    return {
+        'name': 'sensorphone',
+        'version': '1.5.0',
+        'mode': 'async',
+        'type': 'south',
+        'interface': '1.0',
+        'config': _DEFAULT_CONFIG
+    }
 
 
 def plugin_init(config):
@@ -65,16 +77,19 @@ def plugin_init(config):
 
 
 def plugin_start(data):
+    global loop, t
+    _LOGGER.info("plugin_start called")
+
     try:
         host = data['host']
         port = data['port']
 
-        loop = asyncio.get_event_loop()
-        app = web.Application(middlewares=[middleware.error_middleware])
+        loop = asyncio.new_event_loop()
+        app = web.Application(middlewares=[middleware.error_middleware], loop=loop)
         app.router.add_route('POST', '/', SensorPhoneIngest.render_post)
-        handler = app._make_handler()
+        handler = app._make_handler(loop=loop)
         server_coro = loop.create_server(handler, host, port)
-        future = asyncio.ensure_future(server_coro)
+        future = asyncio.ensure_future(server_coro, loop=loop)
 
         data['app'] = app
         data['handler'] = handler
@@ -84,16 +99,48 @@ def plugin_start(data):
             data['server'] = f.result()
 
         future.add_done_callback(f_callback)
+
+        def run():
+            global loop
+            loop.run_forever()
+
+        t = Thread(target=run)
+        t.start()
     except Exception as e:
         _LOGGER.exception(str(e))
 
 
-def plugin_reconfigure(config):
-    pass
+def plugin_reconfigure(handle, new_config):
+    """ Reconfigures the plugin
+
+    it should be called when the configuration of the plugin is changed during the operation of the South service;
+    The new configuration category should be passed.
+
+    Args:
+        handle: handle returned by the plugin initialisation call
+        new_config: JSON object representing the new configuration category for the category
+    Returns:
+        new_handle: new handle to be used in the future calls
+    Raises:
+    """
+    global loop
+    _LOGGER.info("Old config for Sensor Phone south plugin {} \n new config {}".format(handle, new_config))
+
+    # plugin_shutdown
+    plugin_shutdown(handle)
+
+    # plugin_init
+    new_handle = plugin_init(new_config)
+
+    # plugin_start
+    plugin_start(new_handle)
+
+    return new_handle
 
 
 def plugin_shutdown(handle):
     _LOGGER.info('Sensor Phone plugin shut down.')
+    global loop
     try:
         app = handle['app']
         handler = handle['handler']
@@ -101,13 +148,28 @@ def plugin_shutdown(handle):
 
         if server:
             server.close()
-            asyncio.ensure_future(server.wait_closed())
-            asyncio.ensure_future(app.shutdown())
-            asyncio.ensure_future(handler.shutdown(60.0))
-            asyncio.ensure_future(app.cleanup())
+            asyncio.ensure_future(server.wait_closed(), loop=loop)
+            asyncio.ensure_future(app.shutdown(), loop=loop)
+            asyncio.ensure_future(handler.shutdown(60.0), loop=loop)
+            asyncio.ensure_future(app.cleanup(), loop=loop)
+        loop.stop()
     except Exception as e:
         _LOGGER.exception(str(e))
         raise
+
+
+def plugin_register_ingest(handle, callback, ingest_ref):
+    """Required plugin interface component to communicate to South C server
+
+    Args:
+        handle: handle returned by the plugin initialisation call
+        callback: C opaque object required to passed back to C->ingest method
+        ingest_ref: C opaque object required to passed back to C->ingest method
+    """
+    global c_callback, c_ingest_ref
+    c_callback = callback
+    c_ingest_ref = ingest_ref
+
 
 # TODO: Implement FOGL-701 (implement AuditLogger which logs to DB and can be used by all ) for this class
 
@@ -144,44 +206,37 @@ class SensorPhoneIngest(object):
                         ]
                     }
         """
-
-        increment_discarded_counter = False
-
         # TODO: Decide upon the correct format of message
         message = {'result': 'success'}
         code = web.HTTPOk.status_code
 
         try:
-            if not Ingest.is_available():
-                increment_discarded_counter = True
-                message = {'busy': True}
-            else:
-                payload = await request.json()
+            payload = await request.json()
 
-                asset = 'SensorPhone'
-                timestamp = utils.local_timestamp()
-                messages = payload.get('messages')
+            asset = 'SensorPhone'
+            timestamp = utils.local_timestamp()
+            messages = payload.get('messages')
 
-                if not isinstance(messages, list):
-                        raise ValueError('messages must be a list')
+            if not isinstance(messages, list):
+                    raise ValueError('messages must be a list')
 
-                for readings in messages:
-                    key = str(uuid.uuid4())
-                    await Ingest.add_readings(asset=asset, timestamp=timestamp, key=key, readings=readings)
-
+            for readings in messages:
+                key = str(uuid.uuid4())
+                data = {
+                    'asset': asset,
+                    'timestamp': timestamp,
+                    'key': key,
+                    'readings': readings
+                }
+                async_ingest.ingest_callback(c_callback, c_ingest_ref, data)
         except (ValueError, TypeError) as e:
-            increment_discarded_counter = True
             code = web.HTTPBadRequest.status_code
             message = {'error': str(e)}
             _LOGGER.exception(str(e))
         except Exception as e:
-            increment_discarded_counter = True
             code = web.HTTPInternalServerError.status_code
             message = {'error': str(e)}
             _LOGGER.exception(str(e))
-
-        if increment_discarded_counter:
-            Ingest.increment_discarded_readings()
 
         # expect keys in response:
         # (code = 2xx) result Or busy
