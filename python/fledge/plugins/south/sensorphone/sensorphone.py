@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 
-# FOGLAMP_BEGIN
-# See: http://foglamp.readthedocs.io/
-# FOGLAMP_END
+# FLEDGE_BEGIN
+# See: http://fledge.readthedocs.io/
+# FLEDGE_END
 
 """HTTP Listener handler for sensor phone application readings"""
 import asyncio
@@ -11,9 +11,9 @@ import logging
 from threading import Thread
 from aiohttp import web
 
-from foglamp.common import logger
-from foglamp.common.web import middleware
-from foglamp.plugins.common import utils
+from fledge.common import logger
+from fledge.common.web import middleware
+from fledge.plugins.common import utils
 import async_ingest
 
 
@@ -179,7 +179,7 @@ class SensorPhoneIngest(object):
 
     @staticmethod
     async def render_post(request):
-        """Store sensor readings from SensorPhone to FogLAMP
+        """Store sensor readings from SensorPhone to Fledge
 
         Args:
             request:
